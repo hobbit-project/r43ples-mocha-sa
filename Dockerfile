@@ -8,8 +8,8 @@ RUN mvn package -DskipTests
 
 RUN mkdir -p /r43ples/database/dataset
 
-ADD target/versioning-0.0.1-SNAPSHOT.jar /versioning.jar
+ADD target/r43ples-1.0.0.jar /versioning.jar
 
-COPY r43ples_system /r43ples
+COPY scripts /r43ples
 
 CMD ["/r43ples/run.sh"]
