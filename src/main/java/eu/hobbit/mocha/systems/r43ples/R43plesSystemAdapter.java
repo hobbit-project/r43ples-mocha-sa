@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.query.ResultSetFactory;
@@ -48,9 +49,9 @@ public class R43plesSystemAdapter extends AbstractSystemAdapter {
     public void init() throws Exception {
 		LOGGER.info("Initializing R43ples test system...");
         super.init();        
-        datasetFolderName = "/r43ples/spvb_data/";
-        File theDir = new File(datasetFolderName);
-		theDir.mkdir();
+        datasetFolderName = "/r43ples/data";
+//        File theDir = new File(datasetFolderName);
+//		theDir.mkdir();
 		LOGGER.info("R43ples initialized successfully .");
     }
 
@@ -65,15 +66,18 @@ public class R43plesSystemAdapter extends AbstractSystemAdapter {
 		byte[] dataContentBytes = new byte[dataBuffer.remaining()];
 		dataBuffer.get(dataContentBytes, 0, dataBuffer.remaining());
 		
+		LOGGER.info("dataContentBytes.length " + dataContentBytes.length);
+
 		if (dataContentBytes.length != 0) {
-			FileOutputStream fos = null;
 			try {
-				if (fileName.contains("/")) {
-					fileName = fileName.replaceAll("[^/]*[/]", "");
+				String version = "";
+				Pattern pattern = Pattern.compile("[add|delete]set\\.(\\d+)\\.");
+				Matcher matcher = pattern.matcher(fileName);
+				if (matcher.find()) {
+					version = matcher.group(1);
 				}
-				fos = new FileOutputStream(datasetFolderName + File.separator + fileName);
-				IOUtils.write(dataContentBytes, fos);
-				fos.close();
+				fileName = fileName.substring(7, fileName.indexOf(version) + version.length()) + ".nt";
+				FileUtils.writeByteArrayToFile(new File(datasetFolderName + File.separator + fileName), dataContentBytes, true);
 			} catch (FileNotFoundException e) {
 				LOGGER.error("Exception while creating/opening files to write received data.", e);
 			} catch (IOException e) {
@@ -118,11 +122,11 @@ public class R43plesSystemAdapter extends AbstractSystemAdapter {
 		return rewrittenQuery;
 	}
 	
-	private void loadVersion(String graphURI) {
-		LOGGER.info("Loading data on " + graphURI + "...");
+	private void loadVersion(int versionNumber) {
+		LOGGER.info("Loading data on <http://graph.version." + versionNumber + ">...");
 		try {
 			String scriptFilePath = System.getProperty("user.dir") + File.separator + "load.sh";
-			String[] command = {"/bin/bash", scriptFilePath, datasetFolderName, graphURI};
+			String[] command = {"/bin/bash", scriptFilePath, datasetFolderName, Integer.toString(versionNumber)};
 			Process p = new ProcessBuilder(command).redirectErrorStream(true).start();
 			BufferedReader in = new BufferedReader(new InputStreamReader(p.getInputStream()));
 			String line;
@@ -130,7 +134,7 @@ public class R43plesSystemAdapter extends AbstractSystemAdapter {
 				LOGGER.info(line);		
 			}
 			p.waitFor();
-			LOGGER.info(graphURI + " loaded successfully.");
+			LOGGER.info("<http://graph.version." + versionNumber + " loaded.");
 			in.close();
 		} catch (IOException e) {
             LOGGER.error("Exception while executing script for loading data.", e);
@@ -200,7 +204,7 @@ public class R43plesSystemAdapter extends AbstractSystemAdapter {
 			}
 			
 			LOGGER.info("All data of version " + loadingNumber + " received. Proceed to the loading of such version.");
-			loadVersion("http://graph.version." + loadingNumber);
+			loadVersion(loadingNumber);
 			
 			LOGGER.info("Send signal to Benchmark Controller that all data of version " + loadingNumber + " successfully loaded.");
 			try {
@@ -208,10 +212,10 @@ public class R43plesSystemAdapter extends AbstractSystemAdapter {
 			} catch (IOException e) {
 				LOGGER.error("Exception while sending signal that all data of version " + loadingNumber + " successfully loaded.", e);
 			}
-			File theDir = new File(datasetFolderName);
-			for (File f : theDir.listFiles()) {
-				f.delete();
-			}
+//			File theDir = new File(datasetFolderName);
+//			for (File f : theDir.listFiles()) {
+//				f.delete();
+//			}
 			loadingNumber++;
 			dataLoadingFinished = lastLoadingPhase;
     	}
