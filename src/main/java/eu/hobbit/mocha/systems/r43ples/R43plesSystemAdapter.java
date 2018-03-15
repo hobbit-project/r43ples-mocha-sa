@@ -4,7 +4,6 @@
 package eu.hobbit.mocha.systems.r43ples;
 
 import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -18,16 +17,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.query.ResultSetFactory;
-import org.apache.jena.query.ResultSetFormatter;
-import eu.hobbit.mocha.systems.r43ples.util.Constants;
 import org.hobbit.core.components.AbstractSystemAdapter;
 import org.hobbit.core.rabbit.RabbitMQUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import eu.hobbit.mocha.systems.r43ples.util.Constants;
 
 /**
  * @author papv
@@ -60,8 +58,32 @@ public class R43plesSystemAdapter extends AbstractSystemAdapter {
 	 * @see org.hobbit.core.components.TaskReceivingComponent#receiveGeneratedData(byte[])
 	 */
 	public void receiveGeneratedData(byte[] data) {
+		ByteBuffer dataBuffer = ByteBuffer.wrap(data);
+		String fileName = RabbitMQUtils.readString(dataBuffer);
+
+		// read the data contents
+		byte[] dataContentBytes = new byte[dataBuffer.remaining()];
+		dataBuffer.get(dataContentBytes, 0, dataBuffer.remaining());
 		
+		if (dataContentBytes.length != 0) {
+			FileOutputStream fos = null;
+			try {
+				if (fileName.contains("/")) {
+					fileName = fileName.replaceAll("[^/]*[/]", "");
+				}
+				fos = new FileOutputStream(datasetFolderName + File.separator + fileName);
+				IOUtils.write(dataContentBytes, fos);
+				fos.close();
+			} catch (FileNotFoundException e) {
+				LOGGER.error("Exception while creating/opening files to write received data.", e);
+			} catch (IOException e) {
+				LOGGER.error("Exception while writing data file", e);
+			}
+		}
 		
+		if(totalReceived.incrementAndGet() == totalSent.get()) {
+			allVersionDataReceivedMutex.release();
+		}
 	}
 
 	/* (non-Javadoc)
@@ -69,6 +91,12 @@ public class R43plesSystemAdapter extends AbstractSystemAdapter {
 	 */
 	public void receiveGeneratedTask(String tId, byte[] data) {
 		LOGGER.info("Task " + tId + " received from task generator");
+		try {
+			Thread.sleep(1000 * 60 * 60);
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 	
 	public String rewriteQuery(String queryType, String queryText) {
@@ -151,7 +179,42 @@ public class R43plesSystemAdapter extends AbstractSystemAdapter {
 	}
 	
 	@Override
-    public void receiveCommand(byte command, byte[] data) {
+	public void receiveCommand(byte command, byte[] data) {
+    	if (command == Constants.BULK_LOAD_DATA_GEN_FINISHED) {
+    		ByteBuffer buffer = ByteBuffer.wrap(data);
+            int numberOfMessages = buffer.getInt();
+            boolean lastLoadingPhase = buffer.get() != 0;
+   			LOGGER.info("Received signal that all data of version " + loadingNumber + " successfully sent from all data generators (#" + numberOfMessages + ")");
+
+			// if all data have been received before BULK_LOAD_DATA_GEN_FINISHED command received
+   			// release before acquire, so it can immediately proceed to bulk loading
+   			if(totalReceived.get() == totalSent.addAndGet(numberOfMessages)) {
+				allVersionDataReceivedMutex.release();
+			}
+			
+			LOGGER.info("Wait for receiving all data of version " + loadingNumber + ".");
+			try {
+				allVersionDataReceivedMutex.acquire();
+			} catch (InterruptedException e) {
+				LOGGER.error("Exception while waitting for all data of version " + loadingNumber + " to be recieved.", e);
+			}
+			
+			LOGGER.info("All data of version " + loadingNumber + " received. Proceed to the loading of such version.");
+			loadVersion("http://graph.version." + loadingNumber);
+			
+			LOGGER.info("Send signal to Benchmark Controller that all data of version " + loadingNumber + " successfully loaded.");
+			try {
+				sendToCmdQueue(Constants.BULK_LOADING_DATA_FINISHED);
+			} catch (IOException e) {
+				LOGGER.error("Exception while sending signal that all data of version " + loadingNumber + " successfully loaded.", e);
+			}
+			File theDir = new File(datasetFolderName);
+			for (File f : theDir.listFiles()) {
+				f.delete();
+			}
+			loadingNumber++;
+			dataLoadingFinished = lastLoadingPhase;
+    	}
     	super.receiveCommand(command, data);
     }
 
