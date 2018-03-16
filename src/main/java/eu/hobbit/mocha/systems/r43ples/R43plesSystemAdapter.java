@@ -13,6 +13,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.nio.ByteBuffer;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -38,13 +39,11 @@ public class R43plesSystemAdapter extends AbstractSystemAdapter {
 	
 	private AtomicInteger totalReceived = new AtomicInteger(0);
 	private AtomicInteger totalSent = new AtomicInteger(0);
-	
+	private AtomicBoolean r43plesServerStarted = new AtomicBoolean(false);
+
 	private Semaphore allVersionDataReceivedMutex = new Semaphore(0);
 	private Semaphore r43plesServerStartedMutex = new Semaphore(0);
 
-	
-	// used to check if bulk loading phase has finished in  order to proceed with the querying phase
-	private boolean dataLoadingFinished = false;
 	private int loadingNumber = 0;
 	private String datasetFolderName;
 
@@ -95,40 +94,40 @@ public class R43plesSystemAdapter extends AbstractSystemAdapter {
 	 * @see org.hobbit.core.components.TaskReceivingComponent#receiveGeneratedTask(java.lang.String, byte[])
 	 */
 	public void receiveGeneratedTask(String tId, byte[] data) {
-		LOGGER.info("[Task] Waiting until R43ples server is online...");
-		try {
-			r43plesServerStartedMutex.acquire();
-		} catch (InterruptedException e) {
-			LOGGER.error("Exception while waitting for R43ples server to be started.", e);
-		}
-		LOGGER.info("R43ples server started successfully.");
-		
-		if(dataLoadingFinished) {
-			LOGGER.info("Task " + tId + " received from task generator");
-			
-			// read the query
-			ByteBuffer buffer = ByteBuffer.wrap(data);
-			String queryText = RabbitMQUtils.readString(buffer);
-			LOGGER.info("queryText: " + queryText);
-			LOGGER.info("---------------------------------------------------------");
-
-			// rewrite queries in order to be answered
-			String rewrittenQuery = rewriteQuery(queryText);
-			LOGGER.info("rewrittenQuery: " + rewrittenQuery);
-			LOGGER.info("---------------------------------------------------------");
-			
-			ResultSet rs =  executeQuery(tId, rewrittenQuery);
-			ByteArrayOutputStream queryResponseBos = new ByteArrayOutputStream();
-			ResultSetFormatter.outputAsJSON(queryResponseBos, rs);
-			byte[] results = queryResponseBos.toByteArray();
-			LOGGER.info("Task " + tId + " executed successfully.");
-			
+		if(!r43plesServerStarted.get()) {
+			LOGGER.info("[Task] Waiting until R43ples server is online...");
 			try {
-				sendResultToEvalStorage(tId, results);
-				LOGGER.info("Results sent to evaluation storage.");
-			} catch (IOException e) {
-				LOGGER.error("Exception while sending storage space cost to evaluation storage.", e);
+				r43plesServerStartedMutex.acquire();
+			} catch (InterruptedException e) {
+				LOGGER.error("Exception while waitting for R43ples server to be started.", e);
 			}
+			LOGGER.info("R43ples server started successfully.");
+		}
+		
+		LOGGER.info("Task " + tId + " received from task generator");
+		
+		// read the query
+		ByteBuffer buffer = ByteBuffer.wrap(data);
+		String queryText = RabbitMQUtils.readString(buffer);
+		LOGGER.info("queryText: " + queryText);
+		LOGGER.info("---------------------------------------------------------");
+
+		// rewrite queries in order to be answered
+		String rewrittenQuery = rewriteQuery(queryText);
+		LOGGER.info("rewrittenQuery: " + rewrittenQuery);
+		LOGGER.info("---------------------------------------------------------");
+		
+		ResultSet rs =  executeQuery(tId, rewrittenQuery);
+		ByteArrayOutputStream queryResponseBos = new ByteArrayOutputStream();
+		ResultSetFormatter.outputAsJSON(queryResponseBos, rs);
+		byte[] results = queryResponseBos.toByteArray();
+		LOGGER.info("Task " + tId + " executed successfully.");
+		
+		try {
+			sendResultToEvalStorage(tId, results);
+			LOGGER.info("Results sent to evaluation storage.");
+		} catch (IOException e) {
+			LOGGER.error("Exception while sending storage space cost to evaluation storage.", e);
 		}
 	}
 	
@@ -230,6 +229,12 @@ public class R43plesSystemAdapter extends AbstractSystemAdapter {
 			} catch (InterruptedException e) {
 				LOGGER.error("Exception while waitting for all data of version " + loadingNumber + " to be recieved.", e);
 			}
+			try {
+				Thread.sleep(1000 * 10);
+			} catch (InterruptedException e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
 			
 			LOGGER.info("All data of version " + loadingNumber + " received. Proceed to the loading of such version.");
 			loadVersion(loadingNumber);
@@ -245,11 +250,10 @@ public class R43plesSystemAdapter extends AbstractSystemAdapter {
 //				f.delete();
 //			}
 			loadingNumber++;
-			dataLoadingFinished = lastLoadingPhase;
 			
 			// after all bulk load phases over start the R43ples Server
-			if(dataLoadingFinished) {
-				startR43plesServer();
+			if(lastLoadingPhase) {
+				r43plesServerStarted.set(startR43plesServer());
 				r43plesServerStartedMutex.release();
 			}
     	}
@@ -260,6 +264,12 @@ public class R43plesSystemAdapter extends AbstractSystemAdapter {
 	@Override
     public void close() throws IOException {
 		LOGGER.info("Closing System Adapter...");
+		try {
+			Thread.sleep(1000 * 60 *15);
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
         super.close();
 		LOGGER.info("System Adapter closed successfully.");
     }
