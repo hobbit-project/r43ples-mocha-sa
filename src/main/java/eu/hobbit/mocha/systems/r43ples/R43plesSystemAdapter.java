@@ -140,7 +140,7 @@ public class R43plesSystemAdapter extends AbstractSystemAdapter {
 		Matcher graphMatcher = graphPattern.matcher(queryText);
 		while (graphMatcher.find()) {
 			int version = Integer.parseInt(graphMatcher.group(1));
-			int revision = version + 2;
+			int revision = version + 1;
 			queryText = queryText.replaceAll("<http://graph.version." + version + ">", "<" + graphName + "> REVISION \"" + revision + "\"");
 		}
 		try {
