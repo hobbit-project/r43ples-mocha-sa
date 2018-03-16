@@ -20,8 +20,3 @@ do
       exit
    fi
 done
-
-# run the system adapter
-echo $(date +%H:%M:%S.%N | cut -b1-12)" : Running the System adapter..."
-java -cp /versioning.jar org.hobbit.core.run.ComponentStarter eu.hobbit.mocha.systems.r43ples.R43plesSystemAdapter
-
