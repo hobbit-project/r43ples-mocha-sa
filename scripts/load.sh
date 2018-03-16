@@ -1,7 +1,7 @@
 #!/bin/bash
 
 JAR=/r43ples/target/r43ples-console-client-jar-with-dependencies.jar
-CONFIG=/r43ples/r43ples.tdb.conf
+CONFIG=/r43ples/conf/r43ples.tdb.conf
 
 VERSION_NUMBER=$2
 GRAPH=http://r43ples.data

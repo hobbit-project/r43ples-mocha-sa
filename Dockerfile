@@ -10,7 +10,7 @@ RUN mkdir -p /r43ples/database/dataset
 
 ADD target/r43ples-1.0.0.jar /versioning.jar
 
-COPY scripts /r43ples
-COPY conf/ /r43ples
+ADD scripts /r43ples/scripts
+ADD conf/ /r43ples/conf
 
-java -cp /versioning.jar org.hobbit.core.run.ComponentStarter eu.hobbit.mocha.systems.r43ples.R43plesSystemAdapter
+CMD java -cp /versioning.jar org.hobbit.core.run.ComponentStarter eu.hobbit.mocha.systems.r43ples.R43plesSystemAdapter

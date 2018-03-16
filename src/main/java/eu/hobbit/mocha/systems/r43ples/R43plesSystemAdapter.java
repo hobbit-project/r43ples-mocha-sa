@@ -154,7 +154,7 @@ public class R43plesSystemAdapter extends AbstractSystemAdapter {
 	private void loadVersion(int versionNumber) {
 		LOGGER.info("Loading data on <http://graph.version." + versionNumber + ">...");
 		try {
-			String scriptFilePath = System.getProperty("user.dir") + File.separator + "load.sh";
+			String scriptFilePath = System.getProperty("user.dir") + File.separator + "scripts" + File.separator + "load.sh";
 			String[] command = {"/bin/bash", scriptFilePath, datasetFolderName, Integer.toString(versionNumber)};
 			Process p = new ProcessBuilder(command).redirectErrorStream(true).start();
 			BufferedReader in = new BufferedReader(new InputStreamReader(p.getInputStream()));
@@ -176,7 +176,7 @@ public class R43plesSystemAdapter extends AbstractSystemAdapter {
 		LOGGER.info("Executing task " + taskId + "..." );
 		ResultSet results = null;
 		try {
-			String scriptFilePath = System.getProperty("user.dir") + File.separator + "execute_query.sh";
+			String scriptFilePath = System.getProperty("user.dir") + File.separator + "scripts" + File.separator + "execute_query.sh";
 			String[] command = {"/bin/bash", scriptFilePath, query};
 			Process p = new ProcessBuilder(command).start();
 			results = ResultSetFactory.fromJSON(p.getInputStream());
