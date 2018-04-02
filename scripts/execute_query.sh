@@ -1,6 +1,6 @@
 #!/bin/bash
 
-MODE=off
+MODE=false
 ENDPOINT=http://localhost:9998/r43ples/sparql
 QUERY=$1
 
